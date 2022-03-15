@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -9,6 +11,7 @@ import (
 )
 
 const API_URL = "http://localhost/admin/api.php"
+const BROADCAST_PORT = 32768
 
 func sendRequest(context *gin.Context, requestParams map[string]string) {
 	resp, err := grequests.Get(API_URL, &grequests.RequestOptions{Params: requestParams})
@@ -21,9 +24,33 @@ func sendRequest(context *gin.Context, requestParams map[string]string) {
 	}
 }
 
-func main() {
+func receiveBroadcast(c chan string) {
+	for {
+		pc, err := net.ListenPacket("udp4", fmt.Sprintf("%s:%d", "255.255.255.255", BROADCAST_PORT))
 
-	// var API_URL string = os.Getenv("API_URL")
+		if err != nil {
+			log.Panic(err)
+		}
+
+		fmt.Println("Listening for broadcast on port", BROADCAST_PORT)
+		fmt.Println("Waiting for admin connection...")
+
+		var buf [32]byte
+		_, addr, err := pc.ReadFrom(buf[:])
+
+		if err != nil {
+			log.Panic(err)
+		}
+
+		pc.WriteTo(buf[:], addr)
+		pc.Close()
+		fmt.Println(string(buf[:]))
+		fmt.Println("Received broadcast from", addr)
+	}
+}
+func main() {
+	adminIp := make(chan string)
+	go receiveBroadcast(adminIp)
 
 	router := gin.Default()
 
@@ -43,6 +70,26 @@ func main() {
 		sendRequest(context, requestParams)
 	})
 
+	router.GET("/blockables", func(context *gin.Context) {
+		requestParams := map[string]string{
+			"list": "blockables",
+		}
+		sendRequest(context, requestParams)
+	})
+
+	// whitelist = 0
+	// blacklist = 1
+	// regex_whitelist = 2
+	// regex_blacklist = 3
+	router.POST("/blockables", func(context *gin.Context) {
+		requestParams := map[string]string{
+			"list": "blockables",
+			"add":  context.PostForm("value"),
+			"type": context.PostForm("type"),
+		}
+		sendRequest(context, requestParams)
+	})
+
 	router.POST("/enable", func(context *gin.Context) {
 		requestParams := map[string]string{
 			"enable": "true",
@@ -57,5 +104,5 @@ func main() {
 		sendRequest(context, requestParams)
 	})
 
-	router.Run("localhost:5000") // listen and serve on 0.0.0.0:8080 (for windows "localhost:8080")
+	router.Run("0.0.0.0:5000")
 }
