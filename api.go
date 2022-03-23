@@ -14,6 +14,12 @@ const API_URL = "http://localhost/admin/api.php"
 const BROADCAST_PORT = 32768
 
 func sendRequest(context *gin.Context, requestParams map[string]string) {
+	// Add auth if present
+	var value, authExists = context.GetQuery("auth")
+	if authExists {
+		requestParams["auth"] = value
+	}
+
 	resp, err := grequests.Get(API_URL, &grequests.RequestOptions{Params: requestParams})
 
 	if err != nil {
